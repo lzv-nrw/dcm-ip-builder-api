@@ -1,0 +1,1180 @@
+openapi: 3.0.3
+info:
+  title: DCM IP Builder - OpenAPI-Document
+  description: |-
+    This is the OpenAPI 3.0 specification describing the containers used
+    for building and validating Information Packages (IP) in the context
+    of the dcm in the lzvnrw-project. Payload-related parts of a
+    validation-request are forwarded to an Object Validator-service, if
+    available.
+  version: 3.1.0
+servers:
+  - url: 'http://localhost:8080/'
+externalDocs:
+  description: See project hosted by University of Münster
+  url: https://zivgitlab.uni-muenster.de/ULB/lzvnrw/team-se/dcm-ip-builder-api
+tags:
+  - name: build
+    description: IP building-related endpoints
+  - name: validation
+    description: validation-related endpoints
+paths:
+  /ping:
+    get:
+      summary: ping
+      description: Use as connection test. Returns 'pong'.
+      operationId: ping
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /status:
+    get:
+      summary: container status
+      description: Returns Status (readiness) of container.
+      operationId: get_status
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /identify:
+    get:
+      summary: container self-description
+      description: Returns a detailed description of the container properties.
+      operationId: identify
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfDescription'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /report:
+    get:
+      summary: get report
+      description: |-
+        Returns Report if the job associated with the given token exists.
+      operationId: get_report
+      tags:
+        - build
+        - validation
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Report'
+                  - type: object
+                    properties:
+                      data:
+                        oneOf:
+                          - $ref: '#/components/schemas/BuildJobData'
+                          - $ref: '#/components/schemas/ValidationJobData'
+                    example:
+                      data:
+                        valid: false
+                        logId: []
+                        details:
+                          bagit_profile:
+                            valid: false
+                            log:
+                              ERROR:
+                                - datetime: "2024-01-01T00:00:01+00:00"
+                                  origin: Profile Validator
+                                  body: Required tag '<...>' not found in baginfo.txt.
+                              INFO:
+                                - datetime: "2024-01-01T00:00:01+00:00"
+                                  origin: Profile Validator
+                                  body: Bag does not conform to profile '<...>'.
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '503':
+          $ref: '#/components/responses/503Busy'
+  /build:
+    post:
+      summary: build IP
+      description: |-
+        Build an Information Package (IP) from a given Intellectual Entity (IE).
+        If the request is accepted, a 201-response is triggered containing a JobToken.
+      operationId: build
+      tags:
+        - build
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                build:
+                  type: object
+                  properties:
+                    target:
+                      $ref: '#/components/schemas/BuildTarget'
+                    configuration:
+                      type: string
+                      description: |-
+                        Configuration for metadata mapper and converter.
+
+                        Can be provided as either a base64-encoded string of a serialized class or a url pointing to a
+                        python module.
+
+                        Below an example of a pseudo-python module. Here, the module is to be enriched with these methods.
+                        ```
+                        from lzvnrw_converter.oaipmh_converter import OAIPMHMetadataConverter
+                        from dcm_metadata_mapper.mapper_interface import MapperInterface
+
+                        class CustomMapper(MapperInterface):
+                            _SPECVERSION: tuple[int, int, int, str] = ...
+                            MAPPER_TAG: str = ...
+                            def get_metadata(self, key, source_metadata): ...
+
+                        class BuildConfig:
+                            CONVERTER = OAIPMHMetadataConverter
+                            MAPPER = CustomMapper
+                        ```
+                        Note, that the import of, for example, the `lzvnrw_converter` or `dcm_metadata_mapper` requires that the environment in which the IP-Builder service is running,
+                        has to have the package `dcm-metadata-mapper` installed. Refer to the field `version.lib` in the response of `/identify-GET` for information on available packages.
+                      example: <base64-string of serialized python-object>
+                    BagItProfile:
+                      $ref: '#/components/schemas/JSONProfile'
+                    BagItPayloadProfile:
+                      $ref: '#/components/schemas/JSONProfile'
+                  required:
+                    - target
+                    - configuration
+                validation:
+                  type: object
+                  properties:
+                    modules:
+                      $ref: '#/components/schemas/ListOfModules'
+                    args:
+                      type: object
+                      description:
+                        module-specific arguments
+                      properties:
+                        bagit_profile:
+                          type: object
+                          description:
+                            arguments for the bagit_profile module
+                          properties:
+                            baginfoTagCaseSensitive:
+                              $ref: '#/components/schemas/BaginfoTagCaseSensitive'
+                            profileUrl:
+                              $ref: '#/components/schemas/JSONProfile'
+                        payload_structure:
+                          type: object
+                          description:
+                            arguments for the payload_structure module
+                          properties:
+                            profileUrl:
+                              $ref: '#/components/schemas/JSONProfile'
+                callbackUrl:
+                  $ref: '#/components/schemas/CallbackUrl'
+              required:
+                - build
+      callbacks:
+        termination:
+          $ref: '#/components/callbacks/termination'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '503':
+          $ref: '#/components/responses/503Busy'
+    delete:
+      summary: abort job
+      description:
+        Aborts the execution of a job (if already running) or removes it
+        from queue (otherwise). This operation is performed
+        synchronously.
+      operationId: abort
+      tags:
+        - build
+      parameters:
+        - $ref: '#/components/parameters/Token'
+        - name: broadcast
+          in: query
+          description:
+            whether this request should be broadcasted
+            (only relevant in parallel deployment and only if message
+            broadcasting is configured)
+          schema:
+            type: boolean
+            default: true
+          required: false
+        - name: re-queue
+          in: query
+          description:
+            whether the associated token should be added to the queue
+            again
+          schema:
+            type: boolean
+            default: false
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  description: verbose origin of request
+                  example: frontend
+                reason:
+                  type: string
+                  description: verbose reason for request
+                  example: user abort
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "successfully aborted '37ee72d6-80ab-4dcd-a68d-f8d32766c80d'"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '502':
+          description: bad gateway
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "notification service unavailable"
+  /validate/ip:
+    post:
+      summary: validate IP
+      description: |-
+        Validate a previously built IP.
+        If the request is accepted, a 201-response is triggered
+        containing a JobToken.
+
+        If available, requested but unknown modules are forwarded to an
+        Object Validator service. Omitting the modules argument
+        corresponds to all supported validation modules (including
+        Object Validator).
+      operationId: validate_ip
+      tags:
+        - validation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                validation:
+                  type: object
+                  properties:
+                    target:
+                      $ref: '#/components/schemas/ValidationTarget'
+                    modules:
+                      $ref: '#/components/schemas/ListOfModules'
+                    args:
+                      type: object
+                      description:
+                        module-specific arguments
+                      properties:
+                        bagit_profile:
+                          type: object
+                          description:
+                            arguments for the bagit_profile module
+                          properties:
+                            baginfoTagCaseSensitive:
+                              $ref: '#/components/schemas/BaginfoTagCaseSensitive'
+                            profileUrl:
+                              $ref: '#/components/schemas/JSONProfile'
+                        payload_structure:
+                          type: object
+                          description:
+                            arguments for the payload_structure module
+                          properties:
+                            profileUrl:
+                              $ref: '#/components/schemas/JSONProfile'
+                  required:
+                    - target
+                callbackUrl:
+                  $ref: '#/components/schemas/CallbackUrl'
+              required:
+                - validation
+      callbacks:
+        termination:
+          $ref: '#/components/callbacks/termination'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '503':
+          $ref: '#/components/responses/503Busy'
+  /validate:
+    delete:
+      summary: abort job
+      description:
+        Aborts the execution of a job (if already running) or removes it
+        from queue (otherwise). This operation is performed
+        synchronously.
+      tags:
+        - validation
+      parameters:
+        - $ref: '#/components/parameters/Token'
+        - name: broadcast
+          in: query
+          description:
+            whether this request should be broadcasted
+            (only relevant in parallel deployment and only if message
+            broadcasting is configured)
+          schema:
+            type: boolean
+            default: true
+          required: false
+        - name: re-queue
+          in: query
+          description:
+            whether the associated token should be added to the queue
+            again
+          schema:
+            type: boolean
+            default: false
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  description: verbose origin of request
+                  example: frontend
+                reason:
+                  type: string
+                  description: verbose reason for request
+                  example: user abort
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "successfully aborted '37ee72d6-80ab-4dcd-a68d-f8d32766c80d'"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '502':
+          description: bad gateway
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "notification service unavailable"
+components:
+  schemas:
+    Status:
+      title: ContainerStatus
+      description:
+        A ContainerStatus gives a summary of the container's status like
+        availability for job submissions
+      type: object
+      properties:
+        ready:
+          type: boolean
+          description: availability of container for a request
+          example: true
+      required:
+        - ready
+    Path:
+      type: string
+      description: relative path for referencing an IE or IP in file storage
+      example: jobs/abcde-12345-fghijk-67890
+    ISODateTime:
+      title: ISODateTime
+      description: ISO-8601 datetime-stamp
+      type: string
+      pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}/
+      example: "2024-01-01T00:00:00+01:00"
+    Token: # see also components/parameters/Token
+      title: Token
+      description: unique identifier
+      type: string
+      example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+    JobToken:
+      title: JobToken
+      description:
+        A JobToken is used to uniquely identify a specific job.
+      type: object
+      properties:
+        value:
+          $ref: '#/components/schemas/Token'
+        expires:
+          type: boolean
+          description: does the token expire
+          example: true
+        expires_at:
+          $ref: '#/components/schemas/ISODateTime'
+      required:
+        - value
+        - expires
+    JSONProfile:
+      title: JSONProfile
+      type: string
+      description: relative path referencing a BagIt or payload profile in file storage
+      example: bagit_profiles/dcm_bagit_profile_v1.0.0.json
+    BuildTarget:
+      title: BuildTarget
+      description:
+        Target IE for building an IP. It is represented by its relative path
+        within the shared filesystem.
+      type: object
+      properties:
+        path:
+          $ref: '#/components/schemas/Path'
+      required:
+        - path
+    ValidationTarget:
+      title: ValidationTarget
+      description:
+        Target IP for validation. It is represented by its relative path
+        within the shared filesystem.
+      type: object
+      properties:
+        path:
+          $ref: '#/components/schemas/Path'
+      required:
+        - path
+    ListOfModules:
+      title: ListOfModules
+      type: array
+      description: |-
+        List of modules to be used for validation of IPs
+
+        If omitted, all available modules are used for validation.
+        In order to skip these validation steps, an empty list can be
+        passed.
+
+        The identifiers for the modules used here are identical
+        to those returned in the /identify-endpoint.
+
+        For a list of available modules in the Object Validator backend,
+        refer to the address given in the property 'services' given in
+        the /identify-GET endpoint.
+
+        Listing unavailable modules yields a report tagged as invalid.
+      items:
+        type: string
+      example:
+        - bagit_profile
+        - payload_structure
+        - payload_integrity
+        - file_format
+    ReportIdentifier:
+      title: ReportIdentifier
+      description:
+        This type of identifier is used to identify a Report's child.
+      type: string
+      pattern: /[0-9a-zA-Z-_]+@[0-9a-zA-Z-_]+/
+      example: 0@native
+    LogMessage:
+      title: LogMessage
+      description: |-
+        This schema defines the format of the entries occurring in the
+        log of a Report. A LogMessage consists of
+
+        * datetime information (regarding time of message creation),
+        * an origin (who filed this message), and
+        * the actual message.
+      type: object
+      properties:
+        datetime:
+          $ref: '#/components/schemas/ISODateTime'
+        origin:
+          type: string
+          description: origin of message creation
+          example: Object Validator
+        body:
+          type: string
+          description: message body
+          example: Queued job.
+      required:
+        - datetime
+        - origin
+        - body
+    Log:
+      title: Log
+      description: |-
+        Common Log categories are: ERROR, WARNING, INFO, EVENT,
+        NETWORK, FILE_SYSTEM, STARTUP, SHUTDOWN, USER,
+        AUTHENTICATION, and SECURITY.
+      type: object
+      additionalProperties:
+        title: LogCategory
+        description: |-
+          list of LogMessage objects
+        type: array
+        items:
+          $ref: "#/components/schemas/LogMessage"
+      example:
+        INFO:
+          - datetime: "2024-01-01T00:00:00+01:00"
+            origin: Object Validator
+            body: Using default value '<...>' for argument '<...>'.
+        EVENT:
+          - datetime: "2024-01-01T00:00:00+01:00"
+            origin: Object Validator
+            body: Queued job.
+          - datetime: "2024-01-01T00:00:02+01:00"
+            origin: Object Validator
+            body: Job exited normally.
+    ValidationJobData:
+      title: ValidationJobData
+      description: |-
+        validation job output data (data-property in Report schema)
+
+        the logId-property refers to a validation report generated in
+        another subprocess
+
+        additionalProperties keys are given by modules' string-
+        identifiers
+      type: object
+      additionalProperties: false
+      properties:
+        valid:
+          type: boolean
+          description: overall validity; true if IP is valid
+        logId:
+          type: array
+          description:
+            list of identifiers referring to related reports as
+            listed in a children-block of a Report
+          items:
+            $ref: '#/components/schemas/ReportIdentifier'
+          example:
+            - 2@object_validator
+        details:
+          type: object
+          description: detailed validation results per module
+          additionalProperties:
+            type: object
+            description: validation result by module (identifier)
+            properties:
+              valid:
+                type: boolean
+                description: validation result
+              log:
+                $ref: "#/components/schemas/Log"
+            required:
+              - valid
+              - log
+      required:
+        - details
+      example:
+        valid: false
+        logId: []
+        details:
+          bagit_profile:
+            valid: false
+            log:
+              ERROR:
+                - datetime: "2024-01-01T00:00:01+00:00"
+                  origin: Profile Validator
+                  body: Required tag '<...>' not found in baginfo.txt.
+              INFO:
+                - datetime: "2024-01-01T00:00:01+00:00"
+                  origin: Profile Validator
+                  body: Bag does not conform to profile '<...>'.
+    BuildJobData:
+      title: BuildJobData
+      description: |-
+        build job output data (data-property in Report schema)
+
+        the logId-property refers to a detailed validation report
+      type: object
+      additionalProperties: false
+      properties:
+        path:
+          $ref: '#/components/schemas/Path'
+        valid:
+          type: boolean
+          description: overall validity of the IP
+        logId:
+          type: array
+          description:
+            list of identifiers referring to related reports as
+            listed in a children-block of a Report
+          items:
+            $ref: '#/components/schemas/ReportIdentifier'
+          example:
+            - 1@ip_builder
+      required:
+        - logId
+      example:
+        path: ip/abcde-12345-fghijk-67890
+        valid: false
+        logId:
+          - 0@native
+    Report:
+      title: Report
+      description: |-
+        A Report contains
+
+        * information on job details (host, token),
+        * information on the progress of a job,
+        * a collection of log messages (categorized),
+        * job output data, and
+        * reports for child processes spawned by this job.
+      type: object
+      properties:
+        host:
+          type: string
+          description: service url where this report has been generated
+          example: https://www.lzv.nrw/ip_builder
+        token:
+          $ref: '#/components/schemas/JobToken'
+        args:
+          type: object
+          description: request body contents given during submission
+        progress:
+          type: object
+          properties:
+            status:
+              type: string
+              description: job status in processing pipeline
+              enum:
+                - queued
+                - running
+                - aborted
+                - completed
+            verbose:
+              type: string
+              description: verbose description of job-progress
+              example: Stage 1/2 (harvest) - collecting identifiers
+            numeric:
+              type: integer
+              description: numeric representation of progress in percent
+              example: 25
+          required:
+            - status
+            - verbose
+            - numeric
+        log:
+          $ref: "#/components/schemas/Log"
+        children:
+          type: object
+          description: |-
+            Reports of child jobs spawned in the context of this job;
+            JSON-keys have the format '<identifier>@host' (following the
+            ReportIdentifier schema)
+
+            See SelfDescription.services for resolution of host
+            identifier and host url.
+          additionalProperties:
+            allOf:
+              - $ref: '#/components/schemas/Report'
+              - type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ValidationJobData'
+      required:
+        - host
+        - token
+        - args
+        - progress
+        - log
+      example:
+        host: https://www.lzv.nrw/ip_builder
+        token:
+          value: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+          expires: true
+          expires_at: "2024-01-01T00:00:00+01:00"
+        args:
+          build:
+            target:
+              path: ie/abcde-12345-fghijk-67890
+            configuration: <base64-string of serialized python-object>
+          validation:
+            modules:
+              - bagit_profile
+        progress:
+          status: completed
+          verbose: Job terminated normally.
+          numeric: 100
+        log:
+          ERROR:
+            - datetime: "2024-01-01T00:00:01+01:00"
+              origin: IP Builder
+              body: IP validation failed ('bagit_profile').
+          EVENT:
+            - datetime: "2024-01-01T00:00:00+01:00"
+              origin: IP Builder
+              body: Job accepted.
+            - datetime: "2024-01-01T00:00:02+01:00"
+              origin: IP Builder
+              body: Job terminated.
+        children:
+          0@native:
+            host: https://www.lzv.nrw/ip_builder
+            token:
+              value: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+              expires: true
+              expires_at: "2024-01-01T00:00:00+01:00"
+            args:
+              validation:
+                modules:
+                  - bagit_profile
+            progress:
+              status: completed
+              verbose: Job terminated normally.
+              numeric: 100
+            data:
+              valid: false
+              details:
+                bagit_profile:
+                  valid: false
+                  log:
+                    ERROR:
+                      - datetime: "2024-01-01T00:00:01+00:00"
+                        origin: Profile Validator
+                        body: Required tag '<...>' not found in baginfo.txt.
+                    INFO:
+                      - datetime: "2024-01-01T00:00:01+00:00"
+                        origin: Profile Validator
+                        body: Bag does not conform to profile '<...>'.
+            log:
+              ERROR:
+                - datetime: "2024-01-01T00:00:01+00:00"
+                  origin: Profile Validator
+                  body: Required tag '<...>' not found in baginfo.txt.
+              INFO:
+                - datetime: "2024-01-01T00:00:01+00:00"
+                  origin: Profile Validator
+                  body: Bag does not conform to profile '<...>'.
+    CallbackUrl:
+      type: string
+      description: job-termination callback url
+      example: https://www.lzv.nrw/callback
+    Plugin:
+      title: Plugin
+      type: object
+      description: DCM-service plugin
+      properties:
+        name:
+          type: string
+          description: plugin identifier
+          example: plugin-0
+        description:
+          type: string
+          description: description of plugin features
+          example: this plugin performs ...
+      required:
+        - name
+        - description
+    DBAdapter:
+      title: DBAdapter
+      type: object
+      description:
+        A DBAdapter characterizes an adapter for a database by type and
+        initialization settings.
+      properties:
+        type:
+          type: string
+          description: which adapter-type to use
+          enum:
+            - native
+            - http
+          example: http
+        settings:
+          type: object
+          description: |-
+            JSON object used to initialize the adapter
+
+            adapter-specific set of settings (used during
+            initialization); see dcm-common.db-subpackage for details
+          additionalProperties: true
+          example:
+            url: https://www.lzv.nrw/db
+            timeout: 10
+            proxies:
+              http: https://www.lzv.nrw/proxy
+      required:
+        - type
+        - settings
+    SelfDescription:
+      type: object
+      description: information regarding the service's properties
+      properties:
+        description:
+          type: string
+          description:
+            a verbose self-description of the service functionality
+          example:
+            This service provides endpoints for ...
+        version:
+          type: object
+          description: collection of version strings
+          properties:
+            api:
+              type: string
+              description: version string of the implemented API
+              example: "0.2.0"
+            app:
+              type: string
+              description: version string of the app
+              example: "0.1.0"
+            python:
+              type: string
+              description: version of the python implementation
+              example: 3.10.12 (main, Mar 22 2024, 16:50:05) [GCC 11.4.0]
+            profile:
+              type: string
+              description: version string of the default BagIt-profile
+              example: "0.1.0"
+            profile_payload:
+              type: string
+              description:
+                version string of the default BagIt-payload-profile
+              example: "0.1.0"
+            software:
+              type: object
+              description: deployed software versions
+            lib:
+              type: object
+              description: deployed library versions
+              additionalProperties:
+                type: string
+                description: version string
+                example: "0.1.0"
+              example:
+                dependency-a: "1.0.0"
+                dependency-b: "0.2.0.post1"
+          required:
+            - api
+            - app
+            - python
+            - software
+            - lib
+        configuration:
+          type: object
+          description: service configuration details
+          properties:
+            settings:
+              type: object
+              properties:
+                allow_cors:
+                  type: boolean
+                  description: whether CORS requests are allowed
+                  example: true
+                fs_mount_point:
+                  type: string
+                  description: mount point of shared file system
+                  example: /file_storage
+                orchestration:
+                  type: object
+                  description: orchestration-related settings
+                  properties:
+                    at_startup:
+                      type: boolean
+                      description:
+                        whether orchestration-processing loop is run at startup
+                      example: true
+                    queue:
+                      $ref: '#/components/schemas/DBAdapter'
+                    registry:
+                      $ref: '#/components/schemas/DBAdapter'
+                    token:
+                      type: object
+                      description: orchestration token-related settings
+                      properties:
+                        expiration:
+                          type: boolean
+                          description: whether job tokens (and their
+                            associated info like report) expire
+                          example: true
+                        duration:
+                          type: integer
+                          description:
+                            time until job token expires in seconds
+                          example: 3600
+                      required:
+                        - expiration
+                        - duration
+                    debug:
+                      type: boolean
+                      description: whether to have orchestrator print
+                        debug-information
+                      example: true
+                    controls_api:
+                      type: boolean
+                      description: whether the orchestration-controls
+                        API is available
+                      example: true
+                    abort:
+                      type: object
+                      description: |-
+                        abort-related settings
+
+                        only relevant in parallel deployment
+                      properties:
+                        subscription:
+                          type: boolean
+                          description:
+                            whether a subscription to the abort-notifications
+                            is made
+                          example: true
+                        url:
+                          type: string
+                          description: url of the notification service
+                          example: https://www.lzv.nrw/abort-notifications
+                        timeout:
+                          type: object
+                          description: timeout-related settings
+                          properties:
+                            duration:
+                              type: number
+                              description: timeout duration
+                              example: 1.0
+                          required:
+                            - duration
+                        callback:
+                          type: string
+                          description: |-
+                            url for abort-callbacks
+
+                            if omitted, the subscriber's request address
+                            is used (as determined by the notification
+                            service)
+                          example: https://www.lzv.nrw/subscriber
+                      required:
+                        - subscription
+                    daemon_interval:
+                      type: number
+                      description:
+                        interval of orchestrator-restarts (after crash) in
+                        seconds
+                      example: 1
+                    orchestrator_interval:
+                      type: number
+                      description: time in seconds between each iteration
+                        of the orchestrator's processing loop
+                      example: 1
+                  required:
+                    - at_startup
+                    - queue
+                    - registry
+                    - token
+                    - debug
+                    - controls_api
+                    - abort
+                build:
+                  type: object
+                  description: build-related settings
+                  properties:
+                    output:
+                      type: string
+                      description:
+                        IP output directory (relative to fs_mount_point)
+                      example: ip/
+                    manifest:
+                      type: array
+                      description:
+                        list of algorithms used for the generation of
+                        manifest files
+                      items:
+                        type: string
+                        description: hash algorithm
+                      example:
+                        - sha256
+                        - sha512
+                    tag_manifest:
+                      type: array
+                      description:
+                        list of algorithms used for the generation of
+                        tag-manifest files
+                      items:
+                        type: string
+                        description: hash algorithm
+                      example:
+                        - sha256
+                        - sha512
+                    do_validation:
+                      type: boolean
+                      description: |-
+                        whether to perform a validation following the
+                        building process
+
+                        if false, the returned IP is marked invalid
+                      example: true
+                  required:
+                    - output
+                    - manifest
+                    - tag_manifest
+                    - do_validation
+                validation:
+                  type: object
+                  description: validation-related settings
+                  properties:
+                    default_profile:
+                      type: string
+                      description: default BagIt profile identifier
+                      example: "https://www.lzv.nrw/bagit_profile.json"
+                    default_payload_profile:
+                      type: string
+                      description: default BagIt payload profile identifier
+                      example: "https://www.lzv.nrw/payload_profile.json"
+                    plugins:
+                      type: array
+                      description: list of default plugin identifiers
+                      items:
+                        type: string
+                        description: plugin identifier
+                      example:
+                        - bagit_profile
+                    use_object_validator:
+                      type: boolean
+                      description:
+                        whether an Object Validator-service is used for
+                        validation
+                      example: true
+                    object_validator_timeout:
+                      type: object
+                      description: Object Validator-service timeout settings
+                      properties:
+                        duration:
+                          type: integer
+                          description: timeout duration in seconds
+                          example: 60
+                  required:
+                    - plugins
+                    - use_object_validator
+              required:
+                - allow_cors
+                - fs_mount_point
+                - orchestration
+                - build
+                - validation
+            plugins:
+              type: object
+              description: mapping of available plugins
+              additionalProperties:
+                $ref: "#/components/schemas/Plugin"
+              example:
+                plugin-0:
+                  name: plugin-0
+                  description: this plugin performs ...
+            services:
+              type: object
+              description:
+                mapping of hostname and url for secondary DCM-services
+              additionalProperties:
+                title: Service
+                type: string
+                format: url
+              example:
+                object_validator: https://www.lzv.nrw/object_validator
+          required:
+            - settings
+            - plugins
+            - services
+      required:
+        - description
+        - version
+        - configuration
+    BaginfoTagCaseSensitive:
+      title: BaginfoTagCaseSensitive
+      description: boolean for tag case sensitivity in baginfo
+      type: boolean
+      default: true
+      example: true
+  parameters:
+    Token: # see also components/schemas/Token
+      in: query
+      name: token
+      required: true
+      description:
+        unique identifier for jobs
+      example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+      schema:
+        $ref: '#/components/schemas/Token'
+  responses:
+    201AcceptedSubmission:
+      description: submission success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobToken'
+    400BadRequest:
+      description: malformed request body
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Missing required argument <X>"
+    404NoTarget:
+      description: target not found
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Resource not found. Target does not exist."
+    422SemanticProblem:
+      description: semantic problem
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Argument <X> has the wrong type"
+    503Busy:
+      description: container is busy
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Service unavailable: maximum number of submissions reached."
+  callbacks:
+    termination:
+      '{$request.body#/CallbackUrl}':
+        post:
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/JobToken'
+          responses:
+            '200':
+              description: accept callback
