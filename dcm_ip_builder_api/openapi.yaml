@@ -7,7 +7,7 @@ info:
     of the dcm in the lzvnrw-project. Payload-related parts of a
     validation-request are forwarded to an Object Validator-service, if
     available.
-  version: 3.1.0
+  version: 3.1.1
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:

@@ -2,10 +2,11 @@ import os
 from setuptools import setup
 
 setup(
-    version="3.1.0",
+    version="3.1.1",
     name="dcm-ip-builder-api",
-    description="api for ip-builder-containers",
+    description="specification of the DCM IP Builder API",
     author="LZV.nrw",
+    license="MIT",
     install_requires=[
     ],
     packages=[
