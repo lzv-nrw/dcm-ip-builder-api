@@ -4,10 +4,8 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for building and validating Information Packages (IP) in the context
-    of the dcm in the lzvnrw-project. Payload-related parts of a
-    validation-request are forwarded to an Object Validator-service, if
-    available.
-  version: 3.1.1
+    of the dcm in the lzvnrw-project.
+  version: 4.0.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -89,20 +87,25 @@ paths:
                           - $ref: '#/components/schemas/ValidationJobData'
                     example:
                       data:
+                        success: true
                         valid: false
-                        logId: []
                         details:
-                          bagit_profile:
+                          plugin-1:
+                            success: true
+                            valid: true
+                            log:
+                              INFO:
+                                - datetime: "2024-01-01T00:00:01+00:00"
+                                  origin: plugin-1
+                                  body: IP is valid
+                          plugin-2:
+                            success: true
                             valid: false
                             log:
                               ERROR:
                                 - datetime: "2024-01-01T00:00:01+00:00"
-                                  origin: Profile Validator
-                                  body: Required tag '<...>' not found in baginfo.txt.
-                              INFO:
-                                - datetime: "2024-01-01T00:00:01+00:00"
-                                  origin: Profile Validator
-                                  body: Bag does not conform to profile '<...>'.
+                                  origin: plugin-2
+                                  body: Required tag '<...>' is not present in bag-info.txt.
         '400':
           $ref: '#/components/responses/400BadRequest'
         '404':
@@ -114,6 +117,10 @@ paths:
       summary: build IP
       description: |-
         Build an Information Package (IP) from a given Intellectual Entity (IE).
+
+        The IP metadata is validated against the profiles included in the request,
+        or the default profiles otherwise.
+
         If the request is accepted, a 201-response is triggered containing a JobToken.
       operationId: build
       tags:
@@ -130,64 +137,44 @@ paths:
                   properties:
                     target:
                       $ref: '#/components/schemas/BuildTarget'
-                    configuration:
-                      type: string
-                      description: |-
-                        Configuration for metadata mapper and converter.
+                    mappingPlugin:
+                      type: object
+                      description:
+                        plugin to be used for mapping source-metadata to
+                        IP-metadata
+                      properties:
+                        plugin:
+                          type: string
+                          description: |-
+                            plugin identifier
 
-                        Can be provided as either a base64-encoded string of a serialized class or a url pointing to a
-                        python module.
+                            (see contents of `configuration.plugins` as
+                            listed in a response to the GET-/identify
+                            endpoint; accepted plugin context:
+                            "mapping")
+                          example: oai-mapper
+                        args:
+                          type: object
+                          description: |-
+                            plugin arguments
 
-                        Below an example of a pseudo-python module. Here, the module is to be enriched with these methods.
-                        ```
-                        from lzvnrw_converter.oaipmh_converter import OAIPMHMetadataConverter
-                        from dcm_metadata_mapper.mapper_interface import MapperInterface
-
-                        class CustomMapper(MapperInterface):
-                            _SPECVERSION: tuple[int, int, int, str] = ...
-                            MAPPER_TAG: str = ...
-                            def get_metadata(self, key, source_metadata): ...
-
-                        class BuildConfig:
-                            CONVERTER = OAIPMHMetadataConverter
-                            MAPPER = CustomMapper
-                        ```
-                        Note, that the import of, for example, the `lzvnrw_converter` or `dcm_metadata_mapper` requires that the environment in which the IP-Builder service is running,
-                        has to have the package `dcm-metadata-mapper` installed. Refer to the field `version.lib` in the response of `/identify-GET` for information on available packages.
-                      example: <base64-string of serialized python-object>
+                            (see contents of `configuration.plugins` as
+                            listed in a response to the GET-/identify
+                            endpoint for details on the plugin-specific
+                            call signature)
+                          example:
+                            additionalMetadata:
+                              DC-Rights: "CC BY-NC 4.0"
+                      required:
+                        - plugin
+                        - args
                     BagItProfile:
                       $ref: '#/components/schemas/JSONProfile'
                     BagItPayloadProfile:
                       $ref: '#/components/schemas/JSONProfile'
                   required:
                     - target
-                    - configuration
-                validation:
-                  type: object
-                  properties:
-                    modules:
-                      $ref: '#/components/schemas/ListOfModules'
-                    args:
-                      type: object
-                      description:
-                        module-specific arguments
-                      properties:
-                        bagit_profile:
-                          type: object
-                          description:
-                            arguments for the bagit_profile module
-                          properties:
-                            baginfoTagCaseSensitive:
-                              $ref: '#/components/schemas/BaginfoTagCaseSensitive'
-                            profileUrl:
-                              $ref: '#/components/schemas/JSONProfile'
-                        payload_structure:
-                          type: object
-                          description:
-                            arguments for the payload_structure module
-                          properties:
-                            profileUrl:
-                              $ref: '#/components/schemas/JSONProfile'
+                    - mappingPlugin
                 callbackUrl:
                   $ref: '#/components/schemas/CallbackUrl'
               required:
@@ -209,10 +196,10 @@ paths:
     delete:
       summary: abort job
       description:
-        Aborts the execution of a job (if already running) or removes it
+        Aborts the execution of a build job (if already running) or removes it
         from queue (otherwise). This operation is performed
         synchronously.
-      operationId: abort
+      operationId: abort_build
       tags:
         - build
       parameters:
@@ -270,19 +257,15 @@ paths:
                 type: string
                 example:
                   "notification service unavailable"
-  /validate/ip:
+  /validate:
     post:
       summary: validate IP
       description: |-
         Validate a previously built IP.
+
         If the request is accepted, a 201-response is triggered
         containing a JobToken.
-
-        If available, requested but unknown modules are forwarded to an
-        Object Validator service. Omitting the modules argument
-        corresponds to all supported validation modules (including
-        Object Validator).
-      operationId: validate_ip
+      operationId: validate
       tags:
         - validation
       requestBody:
@@ -297,29 +280,10 @@ paths:
                   properties:
                     target:
                       $ref: '#/components/schemas/ValidationTarget'
-                    modules:
-                      $ref: '#/components/schemas/ListOfModules'
-                    args:
-                      type: object
-                      description:
-                        module-specific arguments
-                      properties:
-                        bagit_profile:
-                          type: object
-                          description:
-                            arguments for the bagit_profile module
-                          properties:
-                            baginfoTagCaseSensitive:
-                              $ref: '#/components/schemas/BaginfoTagCaseSensitive'
-                            profileUrl:
-                              $ref: '#/components/schemas/JSONProfile'
-                        payload_structure:
-                          type: object
-                          description:
-                            arguments for the payload_structure module
-                          properties:
-                            profileUrl:
-                              $ref: '#/components/schemas/JSONProfile'
+                    BagItProfile:
+                      $ref: '#/components/schemas/JSONProfile'
+                    BagItPayloadProfile:
+                      $ref: '#/components/schemas/JSONProfile'
                   required:
                     - target
                 callbackUrl:
@@ -340,13 +304,13 @@ paths:
           $ref: '#/components/responses/422SemanticProblem'
         '503':
           $ref: '#/components/responses/503Busy'
-  /validate:
     delete:
       summary: abort job
       description:
-        Aborts the execution of a job (if already running) or removes it
+        Aborts the execution of a validation job (if already running) or removes it
         from queue (otherwise). This operation is performed
         synchronously.
+      operationId: abort_validation
       tags:
         - validation
       parameters:
@@ -420,8 +384,9 @@ components:
       required:
         - ready
     Path:
-      type: string
+      title: Path
       description: relative path for referencing an IE or IP in file storage
+      type: string
       example: jobs/abcde-12345-fghijk-67890
     ISODateTime:
       title: ISODateTime
@@ -478,38 +443,6 @@ components:
           $ref: '#/components/schemas/Path'
       required:
         - path
-    ListOfModules:
-      title: ListOfModules
-      type: array
-      description: |-
-        List of modules to be used for validation of IPs
-
-        If omitted, all available modules are used for validation.
-        In order to skip these validation steps, an empty list can be
-        passed.
-
-        The identifiers for the modules used here are identical
-        to those returned in the /identify-endpoint.
-
-        For a list of available modules in the Object Validator backend,
-        refer to the address given in the property 'services' given in
-        the /identify-GET endpoint.
-
-        Listing unavailable modules yields a report tagged as invalid.
-      items:
-        type: string
-      example:
-        - bagit_profile
-        - payload_structure
-        - payload_integrity
-        - file_format
-    ReportIdentifier:
-      title: ReportIdentifier
-      description:
-        This type of identifier is used to identify a Report's child.
-      type: string
-      pattern: /[0-9a-zA-Z-_]+@[0-9a-zA-Z-_]+/
-      example: 0@native
     LogMessage:
       title: LogMessage
       description: |-
@@ -526,7 +459,7 @@ components:
         origin:
           type: string
           description: origin of message creation
-          example: Object Validator
+          example: IP Builder
         body:
           type: string
           description: message body
@@ -552,102 +485,105 @@ components:
       example:
         INFO:
           - datetime: "2024-01-01T00:00:00+01:00"
-            origin: Object Validator
+            origin: IP Builder
             body: Using default value '<...>' for argument '<...>'.
         EVENT:
           - datetime: "2024-01-01T00:00:00+01:00"
-            origin: Object Validator
+            origin: IP Builder
             body: Queued job.
           - datetime: "2024-01-01T00:00:02+01:00"
-            origin: Object Validator
+            origin: IP Builder
             body: Job exited normally.
     ValidationJobData:
       title: ValidationJobData
-      description: |-
-        validation job output data (data-property in Report schema)
-
-        the logId-property refers to a validation report generated in
-        another subprocess
-
-        additionalProperties keys are given by modules' string-
-        identifiers
+      description: validation job output data (data-property in Report schema)
       type: object
-      additionalProperties: false
       properties:
+        success:
+          type: boolean
+          description: whether the process has been successful
         valid:
           type: boolean
           description: overall validity; true if IP is valid
-        logId:
-          type: array
-          description:
-            list of identifiers referring to related reports as
-            listed in a children-block of a Report
-          items:
-            $ref: '#/components/schemas/ReportIdentifier'
-          example:
-            - 2@object_validator
         details:
           type: object
-          description: detailed validation results per module
+          description: detailed validation results by plugin
           additionalProperties:
             type: object
-            description: validation result by module (identifier)
+            description: plugin execution details
             properties:
+              success:
+                type: boolean
+                description: whether the process has been successful
               valid:
                 type: boolean
                 description: validation result
               log:
                 $ref: "#/components/schemas/Log"
             required:
-              - valid
               - log
-      required:
-        - details
       example:
+        success: true
         valid: false
-        logId: []
         details:
-          bagit_profile:
+          bagit-profile:
+            success: true
             valid: false
             log:
               ERROR:
                 - datetime: "2024-01-01T00:00:01+00:00"
                   origin: Profile Validator
-                  body: Required tag '<...>' not found in baginfo.txt.
+                  body: Required tag '<...>' is not present in bag-info.txt.
               INFO:
                 - datetime: "2024-01-01T00:00:01+00:00"
                   origin: Profile Validator
                   body: Bag does not conform to profile '<...>'.
     BuildJobData:
       title: BuildJobData
-      description: |-
-        build job output data (data-property in Report schema)
-
-        the logId-property refers to a detailed validation report
+      description: build job output data (data-property in Report schema)
       type: object
-      additionalProperties: false
       properties:
+        build_plugin:
+          type: string
+          description: identifier for the used build plugin
         path:
           $ref: '#/components/schemas/Path'
+        success:
+          type: boolean
+          description: whether the process has been successful
         valid:
           type: boolean
-          description: overall validity of the IP
-        logId:
-          type: array
-          description:
-            list of identifiers referring to related reports as
-            listed in a children-block of a Report
-          items:
-            $ref: '#/components/schemas/ReportIdentifier'
-          example:
-            - 1@ip_builder
+          description: overall validity; true if IP is valid
+        details:
+          type: object
+          description: detailed results by plugin
+          additionalProperties:
+            type: object
+            description: plugin execution details
+            properties:
+              success:
+                type: boolean
+                description: whether the process has been successful
+              log:
+                $ref: "#/components/schemas/Log"
+            additionalProperties: true
+            required:
+              - log
       required:
-        - logId
+        - build_plugin
       example:
+        build_plugin: bagit_bag_builder
+        success: true
         path: ip/abcde-12345-fghijk-67890
-        valid: false
-        logId:
-          - 0@native
+        details:
+          build:
+            success: true
+            path: ip/abcde-12345-fghijk-67890
+            log:
+              INFO:
+                - datetime: "2024-01-01T00:00:01+00:00"
+                  origin: Builder
+                  body: Successfully built IP.
     Report:
       title: Report
       description: |-
@@ -655,9 +591,8 @@ components:
 
         * information on job details (host, token),
         * information on the progress of a job,
-        * a collection of log messages (categorized),
-        * job output data, and
-        * reports for child processes spawned by this job.
+        * a collection of log messages (categorized), and
+        * job output data.
       type: object
       properties:
         host:
@@ -694,22 +629,6 @@ components:
             - numeric
         log:
           $ref: "#/components/schemas/Log"
-        children:
-          type: object
-          description: |-
-            Reports of child jobs spawned in the context of this job;
-            JSON-keys have the format '<identifier>@host' (following the
-            ReportIdentifier schema)
-
-            See SelfDescription.services for resolution of host
-            identifier and host url.
-          additionalProperties:
-            allOf:
-              - $ref: '#/components/schemas/Report'
-              - type: object
-                properties:
-                  data:
-                    $ref: '#/components/schemas/ValidationJobData'
       required:
         - host
         - token
@@ -726,19 +645,16 @@ components:
           build:
             target:
               path: ie/abcde-12345-fghijk-67890
-            configuration: <base64-string of serialized python-object>
-          validation:
-            modules:
-              - bagit_profile
+            mappingPlugin:
+              plugin: oai-mapper
+              args:
+                additionalMetadata:
+                  DC-Rights: "CC BY-NC 4.0"
         progress:
           status: completed
           verbose: Job terminated normally.
           numeric: 100
         log:
-          ERROR:
-            - datetime: "2024-01-01T00:00:01+01:00"
-              origin: IP Builder
-              body: IP validation failed ('bagit_profile').
           EVENT:
             - datetime: "2024-01-01T00:00:00+01:00"
               origin: IP Builder
@@ -746,52 +662,83 @@ components:
             - datetime: "2024-01-01T00:00:02+01:00"
               origin: IP Builder
               body: Job terminated.
-        children:
-          0@native:
-            host: https://www.lzv.nrw/ip_builder
-            token:
-              value: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
-              expires: true
-              expires_at: "2024-01-01T00:00:00+01:00"
-            args:
-              validation:
-                modules:
-                  - bagit_profile
-            progress:
-              status: completed
-              verbose: Job terminated normally.
-              numeric: 100
-            data:
-              valid: false
-              details:
-                bagit_profile:
-                  valid: false
-                  log:
-                    ERROR:
-                      - datetime: "2024-01-01T00:00:01+00:00"
-                        origin: Profile Validator
-                        body: Required tag '<...>' not found in baginfo.txt.
-                    INFO:
-                      - datetime: "2024-01-01T00:00:01+00:00"
-                        origin: Profile Validator
-                        body: Bag does not conform to profile '<...>'.
-            log:
-              ERROR:
-                - datetime: "2024-01-01T00:00:01+00:00"
-                  origin: Profile Validator
-                  body: Required tag '<...>' not found in baginfo.txt.
-              INFO:
-                - datetime: "2024-01-01T00:00:01+00:00"
-                  origin: Profile Validator
-                  body: Bag does not conform to profile '<...>'.
     CallbackUrl:
       type: string
       description: job-termination callback url
       example: https://www.lzv.nrw/callback
+    PluginArgSignature:
+      title: PluginArgSignature
+      type: object
+      description: plugin argument
+      properties:
+        type:
+          type: string
+          description: JSON type of the argument
+          enum:
+            - "string"
+            - "integer"
+            - "number"
+            - "boolean"
+            - "array"
+            - "object"
+          example: string
+        required:
+          type: boolean
+          description:
+            if true, this argument is required for a valid request
+          example: false
+        description:
+          type: string
+          description: description of argument's purpose
+          example: this argument sets ...
+        example:
+          description: example for argument value
+          example: 0
+        default:
+          description: |-
+            default value
+
+            only applicable in case of "required: false" and only to
+            primitive types or array
+          example: 0
+        itemType:
+          type: string
+          enum:
+            - "string"
+            - "integer"
+            - "number"
+            - "boolean"
+          description: |-
+            required in case of "type: array"; type of array elements
+
+            Note that all arguments in an array are required to have the
+            same type and cannot have default values assigned individually.
+            A default can be given for the entire array in the parent
+            PluginArgSignature. Only primitive types are allowed.
+        properties:
+          type: object
+          description: |-
+            required in case of "type: object"; mapping of child-names
+            and child-PluginArgSignature
+          additionalProperties:  # valid but not rendered in SwaggerUI
+            $ref: '#/components/schemas/PluginArgSignature'
+        additional_properties:
+          type: boolean
+          description: |-
+            only applicable in case of "type: object"; if false, only
+            explicitly listed properties are accepted
+          example: false
+      example:
+        type: integer
+        required: false
+        default: 0
+      required:
+        - type
+        - required
     Plugin:
       title: Plugin
-      type: object
       description: DCM-service plugin
+      type: object
       properties:
         name:
           type: string
@@ -800,10 +747,29 @@ components:
         description:
           type: string
           description: description of plugin features
-          example: this plugin performs ...
+          example: performs ...
+        signature:
+          $ref: '#/components/schemas/PluginArgSignature'
+        context:
+          type: string
+          description: identifier for the plugin context
+          example: context-0
+        dependencies:
+          type: object
+          description: plugin's dependency versions
+          additionalProperties:
+            type: string
+            description: dependency version
+          example:
+            dependency-a: "1.0.0"
+        info:
+          type: object
+          description: plugin-specific information in custom format
+          additionalProperties: true
       required:
         - name
         - description
+        - signature
     DBAdapter:
       title: DBAdapter
       type: object
@@ -1031,6 +997,14 @@ components:
                       example:
                         - sha256
                         - sha512
+                    default_profile:
+                      type: string
+                      description: default BagIt profile identifier
+                      example: "https://www.lzv.nrw/bagit_profile.json"
+                    default_payload_profile:
+                      type: string
+                      description: default BagIt payload profile identifier
+                      example: "https://www.lzv.nrw/payload_profile.json"
                     do_validation:
                       type: boolean
                       description: |-
@@ -1058,29 +1032,15 @@ components:
                       example: "https://www.lzv.nrw/payload_profile.json"
                     plugins:
                       type: array
-                      description: list of default plugin identifiers
+                      description: |-
+                        list of default validation plugin identifiers
                       items:
                         type: string
                         description: plugin identifier
                       example:
-                        - bagit_profile
-                    use_object_validator:
-                      type: boolean
-                      description:
-                        whether an Object Validator-service is used for
-                        validation
-                      example: true
-                    object_validator_timeout:
-                      type: object
-                      description: Object Validator-service timeout settings
-                      properties:
-                        duration:
-                          type: integer
-                          description: timeout duration in seconds
-                          example: 60
+                        - bagit-profile
                   required:
                     - plugins
-                    - use_object_validator
               required:
                 - allow_cors
                 - fs_mount_point
@@ -1095,7 +1055,19 @@ components:
               example:
                 plugin-0:
                   name: plugin-0
-                  description: this plugin performs ...
+                  description: performs ...
+                  signature:
+                    type: object
+                    required: true
+                    properties:
+                      param-0:
+                        type: integer
+                        required: false
+                        default: 0
+                    additional_properties: false
+                  context: context-0
+                  dependencies:
+                    dependency-a: "1.0.0"
             services:
               type: object
               description:
@@ -1105,7 +1077,7 @@ components:
                 type: string
                 format: url
               example:
-                object_validator: https://www.lzv.nrw/object_validator
+                service: <service-url>
           required:
             - settings
             - plugins

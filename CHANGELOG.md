@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.0.0] - 2025-02-13
+
+### Changed
+
+- **Breaking:** replace `build.configuration` by `mappingPlugin` (in `POST-/build`-requestBody)
+- **Breaking:** migrated to plugin-system for validation-requests
+- **Breaking:** renamed `validate/ip` endpoint to `validate`
+
+### Added
+
+- added sdk-patch mechanism
+
+### Removed
+
+- **Breaking:** removed `dcm-object-validator` dependency
+
 ## [3.1.1] - 2024-11-21
 
 ### Changed
