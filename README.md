@@ -28,10 +28,6 @@ In order to manually build these packages, perform the following actions:
    ```
    java -jar ../openapi-generator-cli.jar generate -i dcm_ip_builder_api/openapi.yaml -g python -o sdk -c config.json
    ```
-1. Apply available patches by running
-   ```
-   /bin/bash apply_patch.sh sdk/dcm_ip_builder_sdk
-   ```
 
 # Contributors
 * Sven Haubold

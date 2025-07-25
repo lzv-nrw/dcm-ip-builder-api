@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.0] - 2025-07-25
+
+### Added
+
+- **Breaking:** added `requestType` to `JobData`-schemas for better sdk-support
+- added IP-identifiers to `JobData`-schemas (to be collected from source metadata)
+- added `build.validation` option to build-requests
+
+### Removed
+
+- removed unused sdk-patch mechanism
+- dropped property `BuildJobData.build_plugin` (replaced by `requestType`)
+- dropped property `SelfDescription.configuration.build.do_validation`
+
 ## [4.0.0] - 2025-02-13
 
 ### Changed
