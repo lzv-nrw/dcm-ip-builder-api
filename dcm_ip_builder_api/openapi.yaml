@@ -5,7 +5,7 @@ info:
     This is the OpenAPI 3.0 specification describing the containers used
     for building and validating Information Packages (IP) in the context
     of the dcm in the lzvnrw-project.
-  version: 5.0.0
+  version: 5.1.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -182,6 +182,13 @@ paths:
                   required:
                     - target
                     - mappingPlugin
+                token:
+                  type: string
+                  description:
+                    idempotency identifier; if submitted previously, returns
+                    the associated job token; otherwise uses this value as
+                    new token's value
+                  example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
                 callbackUrl:
                   $ref: '#/components/schemas/CallbackUrl'
               required:
@@ -293,6 +300,13 @@ paths:
                       $ref: '#/components/schemas/JSONProfile'
                   required:
                     - target
+                token:
+                  type: string
+                  description:
+                    idempotency identifier; if submitted previously, returns
+                    the associated job token; otherwise uses this value as
+                    new token's value
+                  example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
                 callbackUrl:
                   $ref: '#/components/schemas/CallbackUrl'
               required:
