@@ -1,6 +1,16 @@
 # Changelog
 
-## [5.1.0] - 2025-20-08
+## [6.0.0] - 2025-09-09
+
+### Changed
+
+- **Breaking:** updated `SelfDescription`-schema regarding new `orchestra`-package of `dcm-common`
+
+### Removed
+
+- **Breaking:** removed obsolete broadcast- & requeue-options in abort
+
+## [5.1.0] - 2025-08-20
 
 ### Added
 
