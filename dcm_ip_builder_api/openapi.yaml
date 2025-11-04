@@ -5,7 +5,7 @@ info:
     This is the OpenAPI 3.0 specification describing the containers used
     for building and validating Information Packages (IP) in the context
     of the dcm in the lzvnrw-project.
-  version: 6.0.0
+  version: 6.1.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -493,6 +493,10 @@ components:
         valid:
           type: boolean
           description: overall validity; true if IP is valid
+        sourceOrganization:
+          type: string
+          description: identifier of the source organization
+          example: "https://d-nb.info/gnd/0"
         originSystemId:
           type: string
           description: identifier of the origin system
@@ -501,6 +505,30 @@ components:
           type: string
           description: identifier of the record in the external system
           example: b29bb376-3e2c-4a1e-af90-96c094daf5c3
+        bagInfoMetadata:
+          type: object
+          description: metadata collected from bag-info.txt
+          additionalProperties:
+            type: array
+            description: values of a metadata field
+            items:
+              type: string
+              description: metadata value
+          example:
+            Bag-Software-Agent:
+              - "dcm-ip-builder v7.0.0"
+            Source-Organization:
+              - "https://d-nb.info/gnd/0"
+            Origin-System-Identifier:
+              - oai:origin
+            External-Identifier:
+              - b29bb376-3e2c-4a1e-af90-96c094daf5c3
+            DC-Title:
+              - Example title
+              - Example subtitle
+            DC-Creator:
+              - Author A
+              - Author B
         details:
           type: object
           description: detailed validation results by plugin
@@ -554,6 +582,14 @@ components:
         valid:
           type: boolean
           description: overall validity; true if IP is valid
+        sourceOrganization:
+          type: string
+          description: |-
+            identifier of the source organization
+
+            This field is only returned if the original request had
+            `"validate": true`.
+          example: "https://d-nb.info/gnd/0"
         originSystemId:
           type: string
           description: |-
@@ -570,6 +606,30 @@ components:
             This field is only returned if the original request had
             `"validate": true`.
           example: b29bb376-3e2c-4a1e-af90-96c094daf5c3
+        bagInfoMetadata:
+          type: object
+          description: metadata mapped into bag-info.txt
+          additionalProperties:
+            type: array
+            description: values of a metadata field
+            items:
+              type: string
+              description: metadata value
+          example:
+            Bag-Software-Agent:
+              - "dcm-ip-builder v7.0.0"
+            Source-Organization:
+              - "https://d-nb.info/gnd/0"
+            Origin-System-Identifier:
+              - oai:origin
+            External-Identifier:
+              - b29bb376-3e2c-4a1e-af90-96c094daf5c3
+            DC-Title:
+              - Example title
+              - Example subtitle
+            DC-Creator:
+              - Author A
+              - Author B
         details:
           type: object
           description: detailed results by plugin

@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.1.0] - 2025-11-04
+
+### Added
+
+- added IP-/Bag-Info-metadata to the report of a validation-job
+
 ## [6.0.0] - 2025-09-09
 
 ### Changed
