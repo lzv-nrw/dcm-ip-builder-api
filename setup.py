@@ -3,7 +3,7 @@ from setuptools import setup
 
 
 setup(
-    version="6.1.0",
+    version="6.2.0",
     name="dcm-ip-builder-api",
     description="specification of the DCM IP Builder API",
     author="LZV.nrw",

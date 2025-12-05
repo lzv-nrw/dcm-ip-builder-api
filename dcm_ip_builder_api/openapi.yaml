@@ -5,7 +5,7 @@ info:
     This is the OpenAPI 3.0 specification describing the containers used
     for building and validating Information Packages (IP) in the context
     of the dcm in the lzvnrw-project.
-  version: 6.1.0
+  version: 6.2.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -176,9 +176,16 @@ paths:
                       default: true
                       example: true
                     BagItProfile:
-                      $ref: '#/components/schemas/JSONProfile'
-                    BagItPayloadProfile:
-                      $ref: '#/components/schemas/JSONProfile'
+                      type: string
+                      description: |-
+                        URI of a BagIt profile to set in the 'BagIt-Profile-Identifier'
+                        field of bag-info.txt
+
+                        If omitted, the URI of the default BagIt profile is used;
+                        see contents of `configuration.build.default_profile` as
+                        listed in a response to the GET-/identify
+                        endpoint.
+                      example: "https://www.lzv.nrw/bagit_profile.json"
                   required:
                     - target
                     - mappingPlugin
@@ -275,10 +282,6 @@ paths:
                   properties:
                     target:
                       $ref: '#/components/schemas/ValidationTarget'
-                    BagItProfile:
-                      $ref: '#/components/schemas/JSONProfile'
-                    BagItPayloadProfile:
-                      $ref: '#/components/schemas/JSONProfile'
                   required:
                     - target
                 token:
@@ -399,11 +402,6 @@ components:
       required:
         - value
         - expires
-    JSONProfile:
-      title: JSONProfile
-      type: string
-      description: relative path referencing a BagIt or payload profile in file storage
-      example: bagit_profiles/dcm_bagit_profile_v1.0.0.json
     BuildTarget:
       title: BuildTarget
       description:
@@ -901,15 +899,6 @@ components:
               type: string
               description: version of the python implementation
               example: 3.10.12 (main, Mar 22 2024, 16:50:05) [GCC 11.4.0]
-            profile:
-              type: string
-              description: version string of the default BagIt-profile
-              example: "0.1.0"
-            profile_payload:
-              type: string
-              description:
-                version string of the default BagIt-payload-profile
-              example: "0.1.0"
             software:
               type: object
               description: deployed software versions
@@ -1040,10 +1029,6 @@ components:
                       type: string
                       description: default BagIt profile identifier
                       example: "https://www.lzv.nrw/bagit_profile.json"
-                    default_payload_profile:
-                      type: string
-                      description: default BagIt payload profile identifier
-                      example: "https://www.lzv.nrw/payload_profile.json"
                   required:
                     - output
                     - manifest
@@ -1052,14 +1037,27 @@ components:
                   type: object
                   description: validation-related settings
                   properties:
-                    default_profile:
-                      type: string
-                      description: default BagIt profile identifier
-                      example: "https://www.lzv.nrw/bagit_profile.json"
-                    default_payload_profile:
-                      type: string
-                      description: default BagIt payload profile identifier
-                      example: "https://www.lzv.nrw/payload_profile.json"
+                    supported_profiles:
+                      type: array
+                      description: |-
+                        list of supported BagIt-profiles as URIs.
+
+                        The URIs are matched against the field 'BagIt-Profile-Identifier'
+                        of the metadata collected from bag-info.txt.
+                      items:
+                        type: string
+                        description: URI of a BagIt-profile
+                      example:
+                        - https://www.lzv.nrw/bagit_profile.json
+                    load_profile_from_bag:
+                      type: boolean
+                      description:
+                        whether to attempt loading the BagIt-Profile from the URI found
+                        in the metadata collected from bag-info.txt
+
+                        Only relevant if the URI is not included in the `supported_profiles`.
+                      default: false
+                      example: true
                     plugins:
                       type: array
                       description: |-
@@ -1116,12 +1114,6 @@ components:
         - description
         - version
         - configuration
-    BaginfoTagCaseSensitive:
-      title: BaginfoTagCaseSensitive
-      description: boolean for tag case sensitivity in baginfo
-      type: boolean
-      default: true
-      example: true
   parameters:
     Token: # see also components/schemas/Token
       in: query

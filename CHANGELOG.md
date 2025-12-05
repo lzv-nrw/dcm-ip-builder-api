@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.2.0] - 2025-12-05
+
+### Added
+
+- introduced BagIt-profile store to give control over accepted profiles for validation
+
 ## [6.1.0] - 2025-11-04
 
 ### Added
